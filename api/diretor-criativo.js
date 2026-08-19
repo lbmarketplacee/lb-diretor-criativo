@@ -94,7 +94,7 @@ Responda SOMENTE com um JSON válido no formato:
             model: 'gpt-image-1',
             prompt: img.prompt,
             size: TAMANHO_IMAGEM,
-            quality: 'medium',
+            quality: 'high',
             n: 1
           })
         });
