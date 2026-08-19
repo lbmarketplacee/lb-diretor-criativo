@@ -3,7 +3,7 @@
 // Variável de ambiente necessária na Vercel: OPENAI_API_KEY
 
 const NOMES_MK = { shopee: 'Shopee', ml: 'Mercado Livre', tiktok: 'TikTok Shop' };
-const TAMANHO_IMAGEM = '1200x1536'; // padrão fixo pros 3 marketplaces
+const TAMANHO_IMAGEM = '1024x1536'; // único tamanho retrato válido na API (mais próximo do 1200x1540 pedido)
 
 const SEQUENCIA_PADRAO = [
   { tipo: 'Capa / Hero', foco: 'Produto centralizado, fundo limpo, iluminação de estúdio, a imagem principal que representa o anúncio.' },
