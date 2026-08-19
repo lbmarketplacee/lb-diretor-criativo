@@ -1,19 +1,45 @@
-// Diretor Criativo LB — gera o funil de fotos comerciais (até 8 imagens) + título + descrição,
-// a partir de uma foto real do produto, preservando fidelidade ao produto (não inventa características).
+// Diretor Criativo LB — gera o funil de fotos comerciais (até 8 imagens) + título + descrição.
+// Usa a Responses API da OpenAI (manda a FOTO REAL junto com a instrução de cada cena), pra manter
+// fidelidade de verdade ao produto — diferente de gerar do zero só com texto.
+// Gera as fotos UMA DE CADA VEZ (sequencial), não em paralelo, pra respeitar o limite de rate da conta.
 // Variável de ambiente necessária na Vercel: OPENAI_API_KEY
 
 const NOMES_MK = { shopee: 'Shopee', ml: 'Mercado Livre', tiktok: 'TikTok Shop' };
-const TAMANHO_IMAGEM = '1024x1536'; // único tamanho retrato válido na API (mais próximo do 1200x1540 pedido)
+const TAMANHO_IMAGEM = '1024x1536'; // único tamanho retrato válido na API
+const QUALIDADE_IMAGEM = 'medium';
+
+// Mesma regra exata usada no "Gerar Anúncio com IA" — mantém os 2 lugares sempre consistentes
+const REGRAS_TITULO = {
+  shopee: `REGRAS DO TÍTULO (Shopee) - siga TODAS com rigor:
+1. CAPITALIZAÇÃO: use Iniciais Maiúsculas em Cada Palavra Importante (substantivos, adjetivos). Ex: "Vestido Feminino Longo Estampado Manga Bufante". Nunca escreva o título todo em minúsculas.
+2. ESTRATÉGIA DE SEO (o mais importante): NÃO copie a descrição do vendedor. Você é um especialista - PENSE em como o cliente busca na Shopee e ENRIQUEÇA o título com palavras-chave de busca reais que o vendedor não escreveu. Adicione sinônimos e termos que ampliam o alcance (ex: "Roupa Feminina", "Moda", "Elegante", "Casual", conforme o produto).
+3. Aproveite ao máximo os 100 caracteres - busque usar entre 70 e 100 caracteres.
+4. Comece pelo tipo de produto + característica principal, depois vá agregando palavras-chave estratégicas.
+5. PROIBIDO: cores (amarelo, rosa, lilás, azul...) e tamanhos (P, M, G, GG). NUNCA inclua cor nem tamanho.
+6. Sem emojis, sem CAIXA ALTA total, sem símbolos.`,
+  ml: `REGRAS DO TÍTULO (Mercado Livre) - siga TODAS com rigor:
+1. CAPITALIZAÇÃO: use Iniciais Maiúsculas nas Palavras Importantes. Nunca tudo minúsculo.
+2. ESTRATÉGIA: não copie a descrição do vendedor. Use as palavras-chave mais fortes e diretas que o cliente busca.
+3. Máximo 60 caracteres.
+4. Comece pelo termo principal que o cliente busca, seguido das características mais relevantes.
+5. Sem emojis, sem CAIXA ALTA total, sem símbolos.`,
+  tiktok: `REGRAS DO TÍTULO (TikTok Shop) - siga TODAS com rigor:
+1. TAMANHO OBRIGATÓRIO: entre 120 e 140 caracteres.
+2. CAPITALIZAÇÃO: use Iniciais Maiúsculas em Cada Palavra Importante.
+3. ESTRATÉGIA DE SEO: rico em informação — tipo de produto, material, uso, público-alvo, características técnicas, numa frase corrida.
+4. Pode incluir cor e tamanho quando fizer sentido (diferente da Shopee).
+5. Sem emojis, sem CAIXA ALTA total, sem símbolos.`
+};
 
 const SEQUENCIA_PADRAO = [
-  { tipo: 'Capa / Hero', foco: 'Produto centralizado, fundo limpo, iluminação de estúdio, a imagem principal que representa o anúncio.' },
-  { tipo: 'Benefício principal', foco: 'Destaca o maior diferencial/benefício do produto de forma visual clara.' },
-  { tipo: 'Detalhes técnicos ou funcionais', foco: 'Close-up mostrando características técnicas ou funcionais importantes.' },
-  { tipo: 'Qualidade / acabamento', foco: 'Close-up de textura, costura, material, acabamento — mostrando qualidade.' },
-  { tipo: 'Uso real / lifestyle', foco: 'Produto sendo usado em contexto real, mostrando aplicação prática.' },
-  { tipo: 'Variações / versatilidade', foco: 'Se aplicável, mostra variações de cor/tamanho/uso. Se não houver variação, mostra outro ângulo útil.' },
-  { tipo: 'Detalhes / textura', foco: 'Outro close-up de detalhe importante não coberto ainda (zíper, botão, textura, etc.).' },
-  { tipo: 'Medidas / tamanhos / especificações', foco: 'Imagem informativa mostrando medidas, tamanho ou especificações técnicas relevantes.' }
+  { tipo: 'Capa / Hero', foco: 'A peça inteira, fundo de estúdio limpo, iluminação comercial, o produto real por inteiro, sem alterar nada da peça.' },
+  { tipo: 'Benefício principal', foco: 'Mesma peça real, novo cenário/composição que destaca o maior diferencial do produto.' },
+  { tipo: 'Detalhes técnicos ou funcionais', foco: 'Close-up real na peça mostrando uma característica técnica/funcional importante, sem alterar textura, costura ou cor.' },
+  { tipo: 'Qualidade / acabamento', foco: 'Close-up real no tecido/material/acabamento da peça, preservando exatamente a textura e cor originais.' },
+  { tipo: 'Uso real / lifestyle', foco: 'A mesma peça real em um contexto de uso, sem alterar a peça em si, só o cenário ao redor.' },
+  { tipo: 'Variações / versatilidade', foco: 'Outro ângulo útil da mesma peça real, sem inventar variação que não existe na foto original.' },
+  { tipo: 'Detalhes / textura', foco: 'Outro close-up real em detalhe não coberto ainda (zíper, botão, gola, manga), preservando fidelidade total.' },
+  { tipo: 'Medidas / tamanhos / especificações', foco: 'Composição informativa mostrando a peça real com espaço pra indicar medidas/especificações (sem inventar números).' }
 ];
 
 export default async function handler(req, res) {
@@ -29,30 +55,30 @@ export default async function handler(req, res) {
   try {
     const { produto, marketplace, imagens, quantidadeFotos } = req.body || {};
     const listaImagensEnviadas = Array.isArray(imagens) ? imagens.slice(0, 5) : [];
-    if (!listaImagensEnviadas.length) return res.status(400).json({ erro: 'Envie pelo menos 1 foto real do produto — é obrigatória pra preservar fidelidade.' });
+    if (!listaImagensEnviadas.length) return res.status(400).json({ erro: 'Envie pelo menos 1 foto real do produto.' });
     if (!produto || !produto.trim()) return res.status(400).json({ erro: 'Descreva o produto.' });
 
     const mk = NOMES_MK[marketplace] ? marketplace : 'ml';
     const nomeMk = NOMES_MK[mk];
     const qtdFotos = Math.min(Math.max(Number(quantidadeFotos) || 8, 1), 8);
+    const regraTitulo = REGRAS_TITULO[mk];
 
-    // PASSO 1: Analisa a foto real + descrição, monta a estratégia (sequência de fotos) + título + descrição
-    const analisePrompt = `Você é um Diretor Criativo de e-commerce especializado em ${nomeMk}. Sua prioridade MÁXIMA é: fidelidade ao produto real > estética. A foto enviada é a REFERÊNCIA ESTRUTURAL do produto real — preserve modelagem, cor, proporção, costuras, textura, acabamento, zíperes, botões, bolsos, gola, mangas, comprimento e estrutura geral. NUNCA invente características técnicas que não foram informadas ou não são visíveis na foto.
+    const analisePrompt = `Você é um Diretor Criativo de e-commerce especializado em ${nomeMk}. Sua prioridade MÁXIMA é: fidelidade ao produto real > estética. As fotos enviadas são a REFERÊNCIA ESTRUTURAL real do produto — cada cena gerada depois vai usar essas fotos como base, preservando modelagem, cor, proporção, costuras, textura, acabamento e estrutura geral. NUNCA planeje uma cena que exija inventar característica não visível nas fotos.
 
-Analise a foto e a descrição do produto abaixo:
-"${produto}"
+Descrição do produto: "${produto}"
 
-Você recebeu ${listaImagensEnviadas.length} foto(s) real(is) do produto (podem incluir variações de cor diferentes) — use TODAS como referência de fidelidade.
-
-Monte uma estratégia com até ${qtdFotos} imagens, seguindo esta sequência de referência (adapte conforme o produto — pule etapas que não fizerem sentido):
+Monte uma estratégia com até ${qtdFotos} cenas, baseada nesta sequência de referência (adapte/pule conforme o produto):
 ${SEQUENCIA_PADRAO.map((s,i) => `${i+1}. ${s.tipo}: ${s.foco}`).join('\n')}
 
-Pra cada imagem, escreva um prompt DETALHADO em português (que será usado pra gerar a imagem), sempre reforçando as características reais e exatas do produto da foto (cor, formato, textura, materiais visíveis) — nunca genérico.
+Pra cada cena, escreva uma instrução curta e clara (em português) descrevendo o cenário/composição/enquadramento — SEM repetir a descrição do produto (isso já vem da foto real), só o que muda ao redor ou o enquadramento.
 
-Também gere o título e a descrição do anúncio pra ${nomeMk}, seguindo boas práticas de SEO daquela plataforma, sem inventar informações não confirmadas (composição, medidas, compatibilidade).
+${regraTitulo}
+
+REGRAS DA DESCRIÇÃO:
+- Texto persuasivo e organizado, sem inventar composição, medidas ou características não confirmadas.
 
 Responda SOMENTE com um JSON válido no formato:
-{"titulo":"...","descricao":"...","imagens":[{"tipo":"...","prompt":"..."}]}`;
+{"titulo":"...","descricao":"...","cenas":[{"tipo":"...","instrucao":"..."}]}`;
 
     const rAnalise = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -81,34 +107,42 @@ Responda SOMENTE com um JSON válido no formato:
     let estrategia;
     try { estrategia = JSON.parse(conteudo); } catch { return res.status(500).json({ erro: 'Resposta inválida da IA na análise.' }); }
 
-    const listaImagens = (estrategia.imagens || []).slice(0, qtdFotos);
-    if (!listaImagens.length) return res.status(500).json({ erro: 'A IA não conseguiu montar a estratégia de fotos.' });
+    const listaCenas = (estrategia.cenas || []).slice(0, qtdFotos);
+    if (!listaCenas.length) return res.status(500).json({ erro: 'A IA não conseguiu montar a estratégia de cenas.' });
 
-    // PASSO 2: Gera todas as imagens em paralelo (mais rápido que uma de cada vez)
-    const geracoes = await Promise.all(listaImagens.map(async (img) => {
+    const geracoes = [];
+    for (const cena of listaCenas) {
       try {
-        const rImg = await fetch('https://api.openai.com/v1/images/generations', {
+        const rImg = await fetch('https://api.openai.com/v1/responses', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + chave },
           body: JSON.stringify({
-            model: 'gpt-image-1',
-            prompt: img.prompt,
-            size: TAMANHO_IMAGEM,
-            quality: 'high',
-            n: 1
+            model: 'gpt-5.6-luna',
+            input: [{
+              role: 'user',
+              content: [
+                { type: 'input_text', text: `Usando a(s) foto(s) real(is) do produto anexada(s) como referência de fidelidade total (não altere modelagem, cor, textura, costura, estrutura), gere uma nova composição comercial: ${cena.instrucao}` },
+                ...listaImagensEnviadas.map(img => ({ type: 'input_image', image_url: img }))
+              ]
+            }],
+            tools: [{ type: 'image_generation', size: TAMANHO_IMAGEM, quality: QUALIDADE_IMAGEM }]
           })
         });
+
         if (!rImg.ok) {
           const errTxt = await rImg.text();
-          return { tipo: img.tipo, erro: errTxt.slice(0, 200) };
+          geracoes.push({ tipo: cena.tipo, erro: errTxt.slice(0, 200) });
+          continue;
         }
+
         const dataImg = await rImg.json();
-        const b64 = dataImg.data?.[0]?.b64_json;
-        return { tipo: img.tipo, imagem: b64 ? `data:image/png;base64,${b64}` : null, erro: b64 ? null : 'Sem imagem retornada.' };
+        const chamadaImagem = (dataImg.output || []).find(o => o.type === 'image_generation_call');
+        const b64 = chamadaImagem?.result;
+        geracoes.push({ tipo: cena.tipo, imagem: b64 ? `data:image/png;base64,${b64}` : null, erro: b64 ? null : 'Sem imagem retornada.' });
       } catch (e) {
-        return { tipo: img.tipo, erro: e.message };
+        geracoes.push({ tipo: cena.tipo, erro: e.message });
       }
-    }));
+    }
 
     return res.status(200).json({
       ok: true,
