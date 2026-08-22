@@ -32,14 +32,14 @@ const REGRAS_TITULO = {
 };
 
 const SEQUENCIA_PADRAO = [
-  { tipo: 'Capa / Hero', foco: 'A peça inteira, fundo de estúdio limpo, iluminação comercial, o produto real por inteiro, sem alterar nada da peça.' },
-  { tipo: 'Benefício principal', foco: 'Mesma peça real, novo cenário/composição que destaca o maior diferencial do produto.' },
-  { tipo: 'Detalhes técnicos ou funcionais', foco: 'Close-up real na peça mostrando uma característica técnica/funcional importante, sem alterar textura, costura ou cor.' },
-  { tipo: 'Qualidade / acabamento', foco: 'Close-up real no tecido/material/acabamento da peça, preservando exatamente a textura e cor originais.' },
-  { tipo: 'Uso real / lifestyle', foco: 'A mesma peça real em um contexto de uso, sem alterar a peça em si, só o cenário ao redor.' },
-  { tipo: 'Variações / versatilidade', foco: 'Outro ângulo útil da mesma peça real, sem inventar variação que não existe na foto original.' },
-  { tipo: 'Detalhes / textura', foco: 'Outro close-up real em detalhe não coberto ainda (zíper, botão, gola, manga), preservando fidelidade total.' },
-  { tipo: 'Medidas / tamanhos / especificações', foco: 'Composição informativa mostrando a peça real com espaço pra indicar medidas/especificações (sem inventar números).' }
+  { ordem: 1, tipo: 'Capa / Hero', foco: 'O produto real inteiro, fundo de estúdio limpo, iluminação comercial, sem alterar nenhum detalhe do produto.' },
+  { ordem: 2, tipo: 'Benefício principal', foco: 'Mesmo produto real, novo cenário/composição que destaca o maior diferencial dele.' },
+  { ordem: 3, tipo: 'Detalhes técnicos ou funcionais', foco: 'Close-up real no produto mostrando uma característica técnica/funcional importante, sem alterar forma, material ou cor.' },
+  { ordem: 4, tipo: 'Qualidade / acabamento', foco: 'Close-up real no material/acabamento/superfície do produto, preservando exatamente a textura e cor originais.' },
+  { ordem: 5, tipo: 'Uso real / lifestyle', foco: 'O mesmo produto real em um contexto de uso, sem alterar o produto em si, só o cenário ao redor.' },
+  { ordem: 6, tipo: 'Variações / versatilidade', foco: 'Outro ângulo útil do mesmo produto real, sem inventar variação que não existe nas fotos originais.' },
+  { ordem: 7, tipo: 'Detalhes / textura', foco: 'Outro close-up real em detalhe não coberto ainda, preservando fidelidade total ao produto.' },
+  { ordem: 8, tipo: 'Medidas / tamanhos / especificações', foco: 'Composição informativa mostrando o produto real com espaço pra indicar medidas/especificações (sem inventar números).' }
 ];
 
 export default async function handler(req, res) {
@@ -63,12 +63,14 @@ export default async function handler(req, res) {
     const qtdFotos = Math.min(Math.max(Number(quantidadeFotos) || 8, 1), 8);
     const regraTitulo = REGRAS_TITULO[mk];
 
-    const analisePrompt = `Você é um Diretor Criativo de e-commerce especializado em ${nomeMk}. Sua prioridade MÁXIMA é: fidelidade ao produto real > estética. As fotos enviadas são a REFERÊNCIA ESTRUTURAL real do produto — cada cena gerada depois vai usar essas fotos como base, preservando modelagem, cor, proporção, costuras, textura, acabamento e estrutura geral. NUNCA planeje uma cena que exija inventar característica não visível nas fotos.
+    const analisePrompt = `Você é um Diretor Criativo de e-commerce especializado em ${nomeMk}. Sua prioridade MÁXIMA é: fidelidade ao produto real > estética. Isso vale pra QUALQUER tipo de produto (roupa, eletrônico, acessório, utensílio, brinquedo, o que for) — não é específico de roupa. As fotos enviadas são a REFERÊNCIA REAL do produto — cada cena gerada depois vai usar essas fotos como base, preservando forma, cor, proporção, material, textura, acabamento e todos os detalhes visuais exatos. NUNCA planeje uma cena que exija inventar característica não visível nas fotos.
 
 Descrição do produto: "${produto}"
 
-Monte uma estratégia com até ${qtdFotos} cenas, baseada nesta sequência de referência (adapte/pule conforme o produto):
-${SEQUENCIA_PADRAO.map((s,i) => `${i+1}. ${s.tipo}: ${s.foco}`).join('\n')}
+Monte uma estratégia com até ${qtdFotos} cenas, baseada NESTA ORDEM EXATA (não reordene, não pule pra frente — se for usar menos que ${SEQUENCIA_PADRAO.length}, corte do final pra trás, mantendo sempre a cena 1 = Capa/Hero primeiro):
+${SEQUENCIA_PADRAO.map(s => `${s.ordem}. ${s.tipo}: ${s.foco}`).join('\n')}
+
+MUITO IMPORTANTE: o array "cenas" da sua resposta precisa vir NA MESMA ORDEM numérica acima (1, 2, 3...) — nunca reorganize por importância ou qualquer outro critério.
 
 Pra cada cena, escreva uma instrução curta e clara (em português) descrevendo o cenário/composição/enquadramento — SEM repetir a descrição do produto (isso já vem da foto real), só o que muda ao redor ou o enquadramento.
 
@@ -121,7 +123,7 @@ Responda SOMENTE com um JSON válido no formato:
             input: [{
               role: 'user',
               content: [
-                { type: 'input_text', text: `Usando a(s) foto(s) real(is) do produto anexada(s) como referência de fidelidade total (não altere modelagem, cor, textura, costura, estrutura), gere uma nova composição comercial: ${cena.instrucao}` },
+                { type: 'input_text', text: `Usando a(s) foto(s) real(is) do produto anexada(s) como referência de fidelidade total (não altere forma, cor, textura, material, proporções ou nenhum detalhe visual do produto — vale pra qualquer tipo de produto, não só roupa), gere uma nova composição comercial: ${cena.instrucao}` },
                 ...listaImagensEnviadas.map(img => ({ type: 'input_image', image_url: img }))
               ]
             }],
