@@ -115,6 +115,7 @@ Responda SOMENTE com um JSON válido no formato:
     if (!listaCenas.length) return res.status(500).json({ erro: 'A IA não conseguiu montar a estratégia de cenas.' });
 
     const fotoprincipal = listaImagensEnviadas[0];
+    const TAMANHO_GRUPO = 3; // gera em grupos de 3 ao mesmo tempo — bom equilíbrio entre velocidade e o limite de rate da conta
     const geracoes = [];
     for (let i = 0; i < listaCenas.length; i += TAMANHO_GRUPO) {
       const grupo = listaCenas.slice(i, i + TAMANHO_GRUPO);
