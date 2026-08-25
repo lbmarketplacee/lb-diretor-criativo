@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/diretor-criativo.js": {
+      "maxDuration": 300
+    }
+  }
+}
