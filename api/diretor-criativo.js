@@ -65,6 +65,8 @@ export default async function handler(req, res) {
 
     const analisePrompt = `Você é um Diretor Criativo de e-commerce especializado em ${nomeMk}. Sua prioridade MÁXIMA é: fidelidade ao produto real > estética. Isso vale pra QUALQUER tipo de produto (roupa, eletrônico, acessório, utensílio, brinquedo, o que for) — não é específico de roupa. As fotos enviadas são a REFERÊNCIA REAL do produto — cada cena gerada depois vai usar essas fotos como base, preservando forma, cor, proporção, material, textura, acabamento e todos os detalhes visuais exatos. NUNCA planeje uma cena que exija inventar característica não visível nas fotos.
 
+${listaImagensEnviadas.length > 1 ? `Foram enviadas ${listaImagensEnviadas.length} fotos — a PRIMEIRA é a cor/versão principal do produto (será usada na maioria das cenas, pra manter consistência visual). As demais fotos são variações de cor/versão do MESMO produto, que só aparecem juntas na cena "Variações / versatilidade".` : 'Foi enviada 1 foto do produto — a referência principal de todas as cenas.'}
+
 Descrição do produto: "${produto}"
 
 Monte uma estratégia com até ${qtdFotos} cenas, baseada NESTA ORDEM EXATA (não reordene, não pule pra frente — se for usar menos que ${SEQUENCIA_PADRAO.length}, corte do final pra trás, mantendo sempre a cena 1 = Capa/Hero primeiro):
@@ -112,12 +114,18 @@ Responda SOMENTE com um JSON válido no formato:
     const listaCenas = (estrategia.cenas || []).slice(0, qtdFotos);
     if (!listaCenas.length) return res.status(500).json({ erro: 'A IA não conseguiu montar a estratégia de cenas.' });
 
-    // Gera em grupos de 3 ao mesmo tempo — bom equilíbrio entre velocidade e o limite de rate da conta
-    const TAMANHO_GRUPO = 3;
+    const fotoprincipal = listaImagensEnviadas[0];
     const geracoes = [];
     for (let i = 0; i < listaCenas.length; i += TAMANHO_GRUPO) {
       const grupo = listaCenas.slice(i, i + TAMANHO_GRUPO);
       const resultadosGrupo = await Promise.all(grupo.map(async (cena) => {
+        // Só a cena de "Variações/versatilidade" usa TODAS as fotos (pra mostrar as cores diferentes).
+        // As demais cenas usam só a foto principal, pra manter a mesma cor/produto consistente em todo o funil.
+        const ehCenaDeVariacao = /variaç|versatil/i.test(cena.tipo || '');
+        const imagensDessaGeracao = (ehCenaDeVariacao && listaImagensEnviadas.length > 1) ? listaImagensEnviadas : [fotoprincipal];
+        const instrucaoExtra = (ehCenaDeVariacao && listaImagensEnviadas.length > 1)
+          ? ` Mostre as ${listaImagensEnviadas.length} variações de cor/versão do produto (uma foto de referência pra cada), lado a lado ou organizadas de forma comercial.`
+          : '';
         try {
           const rImg = await fetch('https://api.openai.com/v1/responses', {
             method: 'POST',
@@ -127,8 +135,8 @@ Responda SOMENTE com um JSON válido no formato:
               input: [{
                 role: 'user',
                 content: [
-                  { type: 'input_text', text: `Usando a(s) foto(s) real(is) do produto anexada(s) como referência de fidelidade total (não altere forma, cor, textura, material, proporções ou nenhum detalhe visual do produto — vale pra qualquer tipo de produto, não só roupa), gere uma nova composição comercial: ${cena.instrucao}` },
-                  ...listaImagensEnviadas.map(img => ({ type: 'input_image', image_url: img }))
+                  { type: 'input_text', text: `Usando a(s) foto(s) real(is) do produto anexada(s) como referência de fidelidade total (não altere forma, cor, textura, material, proporções ou nenhum detalhe visual do produto — vale pra qualquer tipo de produto, não só roupa), gere uma nova composição comercial: ${cena.instrucao}${instrucaoExtra}` },
+                  ...imagensDessaGeracao.map(img => ({ type: 'input_image', image_url: img }))
                 ]
               }],
               tools: [{ type: 'image_generation', size: TAMANHO_IMAGEM, quality: QUALIDADE_IMAGEM }]
