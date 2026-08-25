@@ -112,38 +112,43 @@ Responda SOMENTE com um JSON válido no formato:
     const listaCenas = (estrategia.cenas || []).slice(0, qtdFotos);
     if (!listaCenas.length) return res.status(500).json({ erro: 'A IA não conseguiu montar a estratégia de cenas.' });
 
+    // Gera em grupos de 3 ao mesmo tempo — bom equilíbrio entre velocidade e o limite de rate da conta
+    const TAMANHO_GRUPO = 3;
     const geracoes = [];
-    for (const cena of listaCenas) {
-      try {
-        const rImg = await fetch('https://api.openai.com/v1/responses', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + chave },
-          body: JSON.stringify({
-            model: 'gpt-5.6-luna',
-            input: [{
-              role: 'user',
-              content: [
-                { type: 'input_text', text: `Usando a(s) foto(s) real(is) do produto anexada(s) como referência de fidelidade total (não altere forma, cor, textura, material, proporções ou nenhum detalhe visual do produto — vale pra qualquer tipo de produto, não só roupa), gere uma nova composição comercial: ${cena.instrucao}` },
-                ...listaImagensEnviadas.map(img => ({ type: 'input_image', image_url: img }))
-              ]
-            }],
-            tools: [{ type: 'image_generation', size: TAMANHO_IMAGEM, quality: QUALIDADE_IMAGEM }]
-          })
-        });
+    for (let i = 0; i < listaCenas.length; i += TAMANHO_GRUPO) {
+      const grupo = listaCenas.slice(i, i + TAMANHO_GRUPO);
+      const resultadosGrupo = await Promise.all(grupo.map(async (cena) => {
+        try {
+          const rImg = await fetch('https://api.openai.com/v1/responses', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + chave },
+            body: JSON.stringify({
+              model: 'gpt-5.6-luna',
+              input: [{
+                role: 'user',
+                content: [
+                  { type: 'input_text', text: `Usando a(s) foto(s) real(is) do produto anexada(s) como referência de fidelidade total (não altere forma, cor, textura, material, proporções ou nenhum detalhe visual do produto — vale pra qualquer tipo de produto, não só roupa), gere uma nova composição comercial: ${cena.instrucao}` },
+                  ...listaImagensEnviadas.map(img => ({ type: 'input_image', image_url: img }))
+                ]
+              }],
+              tools: [{ type: 'image_generation', size: TAMANHO_IMAGEM, quality: QUALIDADE_IMAGEM }]
+            })
+          });
 
-        if (!rImg.ok) {
-          const errTxt = await rImg.text();
-          geracoes.push({ tipo: cena.tipo, erro: errTxt.slice(0, 200) });
-          continue;
+          if (!rImg.ok) {
+            const errTxt = await rImg.text();
+            return { tipo: cena.tipo, erro: errTxt.slice(0, 200) };
+          }
+
+          const dataImg = await rImg.json();
+          const chamadaImagem = (dataImg.output || []).find(o => o.type === 'image_generation_call');
+          const b64 = chamadaImagem?.result;
+          return { tipo: cena.tipo, imagem: b64 ? `data:image/png;base64,${b64}` : null, erro: b64 ? null : 'Sem imagem retornada.' };
+        } catch (e) {
+          return { tipo: cena.tipo, erro: e.message };
         }
-
-        const dataImg = await rImg.json();
-        const chamadaImagem = (dataImg.output || []).find(o => o.type === 'image_generation_call');
-        const b64 = chamadaImagem?.result;
-        geracoes.push({ tipo: cena.tipo, imagem: b64 ? `data:image/png;base64,${b64}` : null, erro: b64 ? null : 'Sem imagem retornada.' });
-      } catch (e) {
-        geracoes.push({ tipo: cena.tipo, erro: e.message });
-      }
+      }));
+      geracoes.push(...resultadosGrupo);
     }
 
     return res.status(200).json({
