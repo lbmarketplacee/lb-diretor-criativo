@@ -79,7 +79,9 @@ Pra cada cena, escreva uma instrução curta e clara (em português) descrevendo
 ${regraTitulo}
 
 REGRAS DA DESCRIÇÃO:
-- Texto persuasivo e organizado, sem inventar composição, medidas ou características não confirmadas.
+- Texto persuasivo e organizado em pelo menos 3 a 4 parágrafos completos, cobrindo: benefício principal, características/materiais, usos/aplicações, e diferenciais.
+- Mínimo de 400 caracteres — não entregue uma descrição curta ou resumida.
+- Sem inventar composição, medidas ou características não confirmadas.
 
 Responda SOMENTE com um JSON válido no formato:
 {"titulo":"...","descricao":"...","cenas":[{"tipo":"...","instrucao":"..."}]}`;
@@ -110,6 +112,41 @@ Responda SOMENTE com um JSON válido no formato:
     const conteudo = dataAnalise.choices?.[0]?.message?.content || '{}';
     let estrategia;
     try { estrategia = JSON.parse(conteudo); } catch { return res.status(500).json({ erro: 'Resposta inválida da IA na análise.' }); }
+
+    // A IA nem sempre acerta o tamanho do título só por instrução — confere de verdade em código,
+    // e se estiver fora da faixa, pede pra ela corrigir (mesma lógica do "Gerar Anúncio com IA").
+    const FAIXA_TITULO = { shopee: [70, 100], ml: [1, 60], tiktok: [120, 140] };
+    const [minTitulo, maxTitulo] = FAIXA_TITULO[mk] || [1, 999];
+    let titulo = estrategia.titulo || '';
+
+    for (let tentativa = 0; tentativa < 3 && (titulo.length < minTitulo || titulo.length > maxTitulo); tentativa++) {
+      const faltam = minTitulo - titulo.length;
+      const pedidoCorrecao = titulo.length < minTitulo
+        ? `O título abaixo tem exatamente ${titulo.length} caracteres, mas PRECISA ter no mínimo ${minTitulo} e no máximo ${maxTitulo} caracteres — faltam pelo menos ${faltam} caracteres. Reescreva-o mais longo, adicionando MAIS palavras-chave relevantes de busca, mantendo a mesma capitalização e estilo. Título atual: "${titulo}". Responda SOMENTE com um JSON no formato {"titulo":"..."}`
+        : `O título abaixo tem ${titulo.length} caracteres, mas PRECISA ter no máximo ${maxTitulo} caracteres. Reescreva-o mais curto, removendo o que for menos relevante. Título atual: "${titulo}". Responda SOMENTE com um JSON no formato {"titulo":"..."}`;
+      try {
+        const r2 = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + chave },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages: [
+              { role: 'system', content: `Você é um especialista em títulos de anúncios para ${nomeMk}. Responda somente com JSON válido.` },
+              { role: 'user', content: pedidoCorrecao }
+            ],
+            temperature: 0.6,
+            response_format: { type: 'json_object' }
+          })
+        });
+        if (r2.ok) {
+          const data2 = await r2.json();
+          const conteudo2 = data2.choices?.[0]?.message?.content || '{}';
+          const parsed2 = JSON.parse(conteudo2);
+          if (parsed2.titulo) titulo = parsed2.titulo;
+        } else { break; }
+      } catch (e) { break; }
+    }
+    estrategia.titulo = titulo;
 
     let listaCenas = (estrategia.cenas || []).slice(0, qtdFotos);
     // Garantia extra: se a IA não incluiu o Guia de Tamanhos (obrigatório), força ele como última cena
