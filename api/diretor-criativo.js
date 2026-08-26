@@ -196,7 +196,7 @@ Responda SOMENTE com um JSON válido no formato:
           const dataImg = await rImg.json();
           const chamadaImagem = (dataImg.output || []).find(o => o.type === 'image_generation_call');
           const b64 = chamadaImagem?.result;
-          return { tipo: cena.tipo, imagem: b64 ? `data:image/png;base64,${b64}` : null, erro: b64 ? null : 'Sem imagem retornada.' };
+          return { tipo: cena.tipo, imagem: b64 ? `data:image/png;base64,${b64}` : null, erro: b64 ? null : `Sem imagem retornada. Debug: ${JSON.stringify(dataImg).slice(0, 500)}` };
         } catch (e) {
           return { tipo: cena.tipo, erro: e.message };
         }
