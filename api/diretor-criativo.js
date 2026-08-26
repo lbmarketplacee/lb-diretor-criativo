@@ -195,10 +195,17 @@ Responda SOMENTE com um JSON válido no formato:
           }
 
           const dataImg = await rImg.json();
-          const chamadaImagem = (dataImg.output || []).find(o => o.type === 'image_generation_call');
-          const b64 = chamadaImagem?.result;
-          const tiposDeOutput = (dataImg.output || []).map(o => o.type).join(', ');
-          return { tipo: cena.tipo, imagem: b64 ? `data:image/png;base64,${b64}` : null, erro: b64 ? null : `Sem imagem retornada. Tipos de output recebidos: [${tiposDeOutput}]. Status: ${dataImg.status}. Debug: ${JSON.stringify(dataImg).slice(0, 3000)}` };
+          const chamadasImagem = (dataImg.output || []).filter(o => o.type === 'image_generation_call');
+          const chamadaOk = chamadasImagem.find(o => o.status === 'completed' && o.result);
+          const b64 = chamadaOk?.result;
+          if (b64) {
+            return { tipo: cena.tipo, imagem: `data:image/png;base64,${b64}`, erro: null };
+          }
+          // Nenhuma chamada de imagem deu certo — monta um erro útil, sem o "ruído" do reasoning
+          const falhas = chamadasImagem.map(o => `status: ${o.status}${o.error ? ', erro: ' + JSON.stringify(o.error) : ''}`).join(' | ');
+          const mensagemFinal = (dataImg.output || []).find(o => o.type === 'message');
+          const textoMensagem = mensagemFinal?.content?.map(c => c.text).filter(Boolean).join(' ') || '';
+          return { tipo: cena.tipo, imagem: null, erro: `A geração de imagem falhou do lado da OpenAI. ${falhas || 'Nenhuma chamada de imagem encontrada.'} ${textoMensagem ? 'Mensagem: ' + textoMensagem : ''}` };
         } catch (e) {
           return { tipo: cena.tipo, erro: e.message };
         }
