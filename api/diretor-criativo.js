@@ -39,7 +39,7 @@ const SEQUENCIA_PADRAO = [
   { ordem: 5, tipo: 'Uso real / lifestyle', foco: 'O mesmo produto real em um contexto de uso, sem alterar o produto em si, só o cenário ao redor.' },
   { ordem: 6, tipo: 'Variações / versatilidade', foco: 'Outro ângulo útil do mesmo produto real, sem inventar variação que não existe nas fotos originais.' },
   { ordem: 7, tipo: 'Detalhes / textura', foco: 'Outro close-up real em detalhe não coberto ainda, preservando fidelidade total ao produto.' },
-  { ordem: 8, tipo: 'Medidas / tamanhos / especificações', foco: 'Composição informativa mostrando o produto real com espaço pra indicar medidas/especificações (sem inventar números).' }
+  { ordem: 8, tipo: 'Guia de Tamanhos / Medidas', obrigatoria: true, foco: 'GUIA DE TAMANHOS no formato de infográfico comercial de e-commerce: o produto real com linhas/setas indicando os pontos de medida (largura, altura, comprimento — conforme o tipo de produto), fundo limpo, layout organizado e claro, no estilo de tabela de medidas usada em anúncios de marketplace. NÃO invente números de medida — deixe os pontos de medição indicados visualmente, sem valores numéricos inventados.' }
 ];
 
 export default async function handler(req, res) {
@@ -69,7 +69,7 @@ ${listaImagensEnviadas.length > 1 ? `Foram enviadas ${listaImagensEnviadas.lengt
 
 Descrição do produto: "${produto}"
 
-Monte uma estratégia com até ${qtdFotos} cenas, baseada NESTA ORDEM EXATA (não reordene, não pule pra frente — se for usar menos que ${SEQUENCIA_PADRAO.length}, corte do final pra trás, mantendo sempre a cena 1 = Capa/Hero primeiro):
+Monte uma estratégia com até ${qtdFotos} cenas, baseada NESTA ORDEM EXATA (não reordene). A cena 1 (Capa/Hero) e a cena 8 (Guia de Tamanhos) são OBRIGATÓRIAS e sempre precisam estar presentes, não importa quantas cenas no total forem pedidas. Se for usar menos que ${SEQUENCIA_PADRAO.length}, corte cenas do MEIO (2 a 7), nunca a 1 nem a 8:
 ${SEQUENCIA_PADRAO.map(s => `${s.ordem}. ${s.tipo}: ${s.foco}`).join('\n')}
 
 MUITO IMPORTANTE: o array "cenas" da sua resposta precisa vir NA MESMA ORDEM numérica acima (1, 2, 3...) — nunca reorganize por importância ou qualquer outro critério.
@@ -111,7 +111,14 @@ Responda SOMENTE com um JSON válido no formato:
     let estrategia;
     try { estrategia = JSON.parse(conteudo); } catch { return res.status(500).json({ erro: 'Resposta inválida da IA na análise.' }); }
 
-    const listaCenas = (estrategia.cenas || []).slice(0, qtdFotos);
+    let listaCenas = (estrategia.cenas || []).slice(0, qtdFotos);
+    // Garantia extra: se a IA não incluiu o Guia de Tamanhos (obrigatório), força ele como última cena
+    const cenaGuiaTamanhos = SEQUENCIA_PADRAO.find(s => s.obrigatoria);
+    const jaTemGuia = listaCenas.some(c => /guia de tamanho|medidas/i.test(c.tipo || ''));
+    if (cenaGuiaTamanhos && !jaTemGuia) {
+      if (listaCenas.length >= qtdFotos && listaCenas.length > 1) listaCenas = listaCenas.slice(0, -1); // abre espaço, sem passar do limite pedido
+      listaCenas.push({ tipo: cenaGuiaTamanhos.tipo, instrucao: cenaGuiaTamanhos.foco });
+    }
     if (!listaCenas.length) return res.status(500).json({ erro: 'A IA não conseguiu montar a estratégia de cenas.' });
 
     const fotoprincipal = listaImagensEnviadas[0];
