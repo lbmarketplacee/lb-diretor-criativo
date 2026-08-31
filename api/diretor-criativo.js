@@ -5,7 +5,7 @@
 // Variável de ambiente necessária na Vercel: OPENAI_API_KEY
 
 const NOMES_MK = { shopee: 'Shopee', ml: 'Mercado Livre', tiktok: 'TikTok Shop' };
-const TAMANHO_IMAGEM = '1024x1536'; // único tamanho retrato válido na API
+const TAMANHO_IMAGEM = '1024x1280'; // vertical 4:5 (proporção exata: 1024÷1280 = 0.8 = 4:5), divisível por 16
 const QUALIDADE_IMAGEM = 'medium';
 
 // Mesma regra exata usada no "Gerar Anúncio com IA" — mantém os 2 lugares sempre consistentes
@@ -32,14 +32,14 @@ const REGRAS_TITULO = {
 };
 
 const SEQUENCIA_PADRAO = [
-  { ordem: 1, tipo: 'Capa / Hero', foco: 'O produto real inteiro, fundo de estúdio limpo, iluminação comercial, sem alterar nenhum detalhe do produto.' },
-  { ordem: 2, tipo: 'Benefício principal', foco: 'Mesmo produto real, novo cenário/composição que destaca o maior diferencial dele.' },
-  { ordem: 3, tipo: 'Detalhes técnicos ou funcionais', foco: 'Close-up real no produto mostrando uma característica técnica/funcional importante, sem alterar forma, material ou cor.' },
-  { ordem: 4, tipo: 'Qualidade / acabamento', foco: 'Close-up real no material/acabamento/superfície do produto, preservando exatamente a textura e cor originais.' },
-  { ordem: 5, tipo: 'Uso real / lifestyle', foco: 'O mesmo produto real em um contexto de uso real (ambiente do dia a dia, cenário comercial), sem alterar o produto em si, só o cenário ao redor. Evite usar manequim — prefira mostrar o produto sozinho, bem apresentado no cenário, a não ser que o tipo de produto exija claramente um corpo/manequim pra fazer sentido.' },
-  { ordem: 6, tipo: 'Variações / versatilidade', foco: 'Outro ângulo útil do mesmo produto real, sem inventar variação que não existe nas fotos originais.' },
-  { ordem: 7, tipo: 'Detalhes / textura', foco: 'Outro close-up real em detalhe não coberto ainda, preservando fidelidade total ao produto.' },
-  { ordem: 8, tipo: 'Guia de Tamanhos', obrigatoria: true, foco: 'GUIA DE TAMANHOS genérico, no estilo padrão de tabela de medidas usada em anúncios de marketplace de moda (tipo P, M, G, GG com as medidas típicas de cada um, em cm). Monte essa tabela você mesmo, com valores realistas e coerentes com o tipo de produto — não precisa ser a medida exata do produto da foto, é um guia de referência padrão de tamanhos. Pode mostrar o produto ao lado da tabela como ilustração, fundo limpo, layout comercial organizado.' }
+  { ordem: 1, tipo: 'Capa Ambientada', foco: 'A primeira impressão do anúncio: o produto real, inteiro, centralizado, ambientado num cenário comercial premium e condizente com o tipo de produto, iluminação profissional, composição forte de capa.' },
+  { ordem: 2, tipo: 'Ângulo Diferente', foco: 'O mesmo produto real, mas de um ângulo diferente do da capa (lateral, trás, outro plano), ainda em contexto ambientado ou fundo comercial limpo, mostrando melhor a forma/volume do produto.' },
+  { ordem: 3, tipo: 'Nova Foto Ambientada', foco: 'Uma segunda composição ambientada, com cenário/contexto diferente da capa, mostrando outro momento de uso ou outro enquadramento comercial do mesmo produto real.' },
+  { ordem: 4, tipo: 'Detalhes do Produto', foco: 'Close-up real em detalhes importantes do produto (textura, acabamento, costura, material, componente), preservando exatamente cor e forma originais.' },
+  { ordem: 5, tipo: 'Tabela de Medidas', obrigatoria: true, foco: 'GUIA DE TAMANHOS genérico, no estilo padrão de tabela de medidas usada em anúncios de marketplace de moda (tipo P, M, G, GG com as medidas típicas de cada um, em cm). Monte essa tabela você mesmo, com valores realistas e coerentes com o tipo de produto — não precisa ser a medida exata do produto da foto, é um guia de referência padrão de tamanhos. Pode mostrar o produto ao lado da tabela como ilustração, fundo limpo, layout comercial organizado.' },
+  { ordem: 6, tipo: 'Looks / Formas de Usar', foco: 'O mesmo produto real combinado ou em diferentes formas/contextos de uso, mostrando versatilidade, sem alterar o produto em si. Evite usar manequim — prefira mostrar o produto sozinho, bem apresentado, a não ser que o tipo de produto exija claramente um corpo/manequim pra fazer sentido.' },
+  { ordem: 7, tipo: 'Benefícios / Composição / Informações Comerciais', foco: 'Um infográfico comercial destacando os principais benefícios do produto e, se informado na descrição, a composição/material — baseado SOMENTE no que foi dito na descrição do produto, sem inventar nenhuma informação técnica, benefício ou composição que não tenha sido mencionada.' },
+  { ordem: 8, tipo: 'Principais Atributos com Callouts', foco: 'O produto real com setas/linhas de chamada (callouts) apontando pra 3-4 características visuais reais dele, com textos curtos ao lado de cada seta — baseado SOMENTE em características visíveis na foto ou mencionadas na descrição, sem inventar nenhum atributo.' }
 ];
 
 export default async function handler(req, res) {
@@ -70,7 +70,7 @@ ${listaImagensEnviadas.length > 1 ? `Foram enviadas ${listaImagensEnviadas.lengt
 
 Descrição do produto: "${produto}"
 
-Monte uma estratégia com até ${qtdFotos} cenas, baseada NESTA ORDEM EXATA (não reordene). A cena 1 (Capa/Hero) e a cena 8 (Guia de Tamanhos) são OBRIGATÓRIAS e sempre precisam estar presentes, não importa quantas cenas no total forem pedidas. Se for usar menos que ${SEQUENCIA_PADRAO.length}, corte cenas do MEIO (2 a 7), nunca a 1 nem a 8:
+Monte uma estratégia com até ${qtdFotos} cenas, baseada NESTA ORDEM EXATA (não reordene). A cena 1 (Capa Ambientada) e a cena 5 (Tabela de Medidas) são OBRIGATÓRIAS e sempre precisam estar presentes, não importa quantas cenas no total forem pedidas. Se for usar menos que ${SEQUENCIA_PADRAO.length}, corte as outras cenas primeiro, nunca a 1 nem a 5:
 ${SEQUENCIA_PADRAO.map(s => `${s.ordem}. ${s.tipo}: ${s.foco}`).join('\n')}
 
 MUITO IMPORTANTE: o array "cenas" da sua resposta precisa vir NA MESMA ORDEM numérica acima (1, 2, 3...) — nunca reorganize por importância ou qualquer outro critério.
@@ -82,7 +82,7 @@ ${regraTitulo}
 REGRAS DA DESCRIÇÃO:
 - Texto persuasivo e organizado em pelo menos 3 a 4 parágrafos completos, cobrindo: benefício principal, características/materiais, usos/aplicações, e diferenciais.
 - Mínimo de 400 caracteres — não entregue uma descrição curta ou resumida.
-- Sem inventar composição, medidas ou características não confirmadas.
+- NUNCA invente: composição/material específico, medidas reais, potência, capacidade, resistência, certificação, compatibilidade ou qualquer especificação técnica que não tenha sido informada na descrição do produto. Use apenas o que foi dito ou o que é visualmente óbvio na foto.
 
 Responda SOMENTE com um JSON válido no formato:
 {"titulo":"...","descricao":"...","cenas":[{"tipo":"...","instrucao":"..."}]}`;
@@ -213,7 +213,7 @@ Responda SOMENTE com um JSON válido no formato:
       const resultadosGrupo = await Promise.all(grupo.map(async (cena) => {
         // Só a cena de "Variações/versatilidade" usa TODAS as fotos (pra mostrar as cores diferentes).
         // As demais cenas usam só a foto principal, pra manter a mesma cor/produto consistente em todo o funil.
-        const ehCenaDeVariacao = /variaç|versatil/i.test(cena.tipo || '');
+        const ehCenaDeVariacao = /looks|formas de usar/i.test(cena.tipo || '');
         const imagensDessaGeracao = (ehCenaDeVariacao && listaImagensEnviadas.length > 1) ? listaImagensEnviadas : [fotoprincipal];
         const instrucaoExtra = (ehCenaDeVariacao && listaImagensEnviadas.length > 1)
           ? ` Mostre as ${listaImagensEnviadas.length} cores/versões do produto lado a lado, cada uma reproduzindo EXATAMENTE a cor da foto de referência correspondente — não misture as cores, não deixe todas iguais, cada peça na composição precisa ter a cor exata de uma das fotos anexadas.`
