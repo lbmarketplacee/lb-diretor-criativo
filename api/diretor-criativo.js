@@ -36,10 +36,10 @@ const SEQUENCIA_PADRAO = [
   { ordem: 2, tipo: 'Benefício principal', foco: 'Mesmo produto real, novo cenário/composição que destaca o maior diferencial dele.' },
   { ordem: 3, tipo: 'Detalhes técnicos ou funcionais', foco: 'Close-up real no produto mostrando uma característica técnica/funcional importante, sem alterar forma, material ou cor.' },
   { ordem: 4, tipo: 'Qualidade / acabamento', foco: 'Close-up real no material/acabamento/superfície do produto, preservando exatamente a textura e cor originais.' },
-  { ordem: 5, tipo: 'Uso real / lifestyle', foco: 'O mesmo produto real em um contexto de uso, sem alterar o produto em si, só o cenário ao redor.' },
+  { ordem: 5, tipo: 'Uso real / lifestyle', foco: 'O mesmo produto real em um contexto de uso real (ambiente do dia a dia, cenário comercial), sem alterar o produto em si, só o cenário ao redor. Evite usar manequim — prefira mostrar o produto sozinho, bem apresentado no cenário, a não ser que o tipo de produto exija claramente um corpo/manequim pra fazer sentido.' },
   { ordem: 6, tipo: 'Variações / versatilidade', foco: 'Outro ângulo útil do mesmo produto real, sem inventar variação que não existe nas fotos originais.' },
   { ordem: 7, tipo: 'Detalhes / textura', foco: 'Outro close-up real em detalhe não coberto ainda, preservando fidelidade total ao produto.' },
-  { ordem: 8, tipo: 'Guia de Tamanhos / Medidas', obrigatoria: true, foco: 'GUIA DE TAMANHOS no formato de infográfico comercial de e-commerce: o produto real com linhas/setas indicando os pontos de medida (largura, altura, comprimento — conforme o tipo de produto), fundo limpo, layout organizado e claro, no estilo de tabela de medidas usada em anúncios de marketplace. NÃO invente números de medida — deixe os pontos de medição indicados visualmente, sem valores numéricos inventados.' }
+  { ordem: 8, tipo: 'Guia de Tamanhos', obrigatoria: true, foco: 'GUIA DE TAMANHOS genérico, no estilo padrão de tabela de medidas usada em anúncios de marketplace de moda (tipo P, M, G, GG com as medidas típicas de cada um, em cm). Monte essa tabela você mesmo, com valores realistas e coerentes com o tipo de produto — não precisa ser a medida exata do produto da foto, é um guia de referência padrão de tamanhos. Pode mostrar o produto ao lado da tabela como ilustração, fundo limpo, layout comercial organizado.' }
 ];
 
 export default async function handler(req, res) {
@@ -172,7 +172,7 @@ Responda SOMENTE com um JSON válido no formato:
               input: [{
                 role: 'user',
                 content: [
-                  { type: 'input_text', text: `REGRA MAIS IMPORTANTE: a cor do produto na imagem gerada precisa ser EXATAMENTE a mesma cor da(s) foto(s) real(is) anexada(s) — não troque a cor, não invente outra cor, não escolha uma cor "padrão". Preserve também forma, textura, material e proporções exatas do produto real. Usando essas fotos reais como referência, gere uma nova composição comercial: ${cena.instrucao}${instrucaoExtra}` },
+                  { type: 'input_text', text: `Usando a(s) foto(s) real(is) do produto anexada(s) como referência de fidelidade total (não altere forma, cor, textura, material, proporções ou nenhum detalhe visual do produto — vale pra qualquer tipo de produto, não só roupa), gere uma nova composição comercial: ${cena.instrucao}${instrucaoExtra}` },
                   ...imagensDessaGeracao.map(img => ({ type: 'input_image', image_url: img }))
                 ]
               }],
@@ -216,7 +216,7 @@ Responda SOMENTE com um JSON válido no formato:
         const ehCenaDeVariacao = /variaç|versatil/i.test(cena.tipo || '');
         const imagensDessaGeracao = (ehCenaDeVariacao && listaImagensEnviadas.length > 1) ? listaImagensEnviadas : [fotoprincipal];
         const instrucaoExtra = (ehCenaDeVariacao && listaImagensEnviadas.length > 1)
-          ? ` Mostre as ${listaImagensEnviadas.length} variações de cor/versão do produto (uma foto de referência pra cada), lado a lado ou organizadas de forma comercial.`
+          ? ` Mostre as ${listaImagensEnviadas.length} cores/versões do produto lado a lado, cada uma reproduzindo EXATAMENTE a cor da foto de referência correspondente — não misture as cores, não deixe todas iguais, cada peça na composição precisa ter a cor exata de uma das fotos anexadas.`
           : '';
         return gerarUmaImagem(cena, imagensDessaGeracao, instrucaoExtra);
       }));
