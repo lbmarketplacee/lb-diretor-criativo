@@ -32,7 +32,7 @@ const REGRAS_TITULO = {
 };
 
 const SEQUENCIA_PADRAO = [
-  { ordem: 1, tipo: 'Capa Ambientada', foco: 'A primeira impressão do anúncio: o produto real, inteiro, centralizado, ambientado num cenário comercial premium e condizente com o tipo de produto, iluminação profissional, composição forte de capa.' },
+  { ordem: 1, tipo: 'Capa Ambientada', foco: 'A primeira impressão do anúncio: o produto real, inteiro, centralizado, ambientado num cenário comercial premium e condizente com o tipo de produto, iluminação profissional, composição forte de capa. NUNCA use manequim (principalmente manequim sem cabeça) — mostre o produto sozinho, bem apresentado no cenário, sem nenhuma forma humana ou manequim.' },
   { ordem: 2, tipo: 'Ângulo Diferente', foco: 'O mesmo produto real, mas de um ângulo diferente do da capa (lateral, trás, outro plano), ainda em contexto ambientado ou fundo comercial limpo, mostrando melhor a forma/volume do produto.' },
   { ordem: 3, tipo: 'Nova Foto Ambientada', foco: 'Uma segunda composição ambientada, com cenário/contexto diferente da capa, mostrando outro momento de uso ou outro enquadramento comercial do mesmo produto real.' },
   { ordem: 4, tipo: 'Detalhes do Produto', foco: 'Close-up real em detalhes importantes do produto (textura, acabamento, costura, material, componente), preservando exatamente cor e forma originais.' },
