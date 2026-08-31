@@ -53,8 +53,8 @@ export default async function handler(req, res) {
   if (!chave) return res.status(500).json({ erro: 'Chave da OpenAI não configurada.' });
 
   try {
-    const { produto, marketplace, imagens, quantidadeFotos, qualidade } = req.body || {};
-    const qualidadeFinal = qualidade === 'low' ? 'low' : 'medium'; // padrão sempre medium, só usa low se pedido explicitamente
+    const { produto, marketplace, imagens, quantidadeFotos } = req.body || {};
+    const qualidadeFinal = 'low'; // só existe essa opção agora, mais barato
     const listaImagensEnviadas = Array.isArray(imagens) ? imagens.slice(0, 5) : [];
     if (!listaImagensEnviadas.length) return res.status(400).json({ erro: 'Envie pelo menos 1 foto real do produto.' });
     if (!produto || !produto.trim()) return res.status(400).json({ erro: 'Descreva o produto.' });
