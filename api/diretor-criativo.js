@@ -159,6 +159,52 @@ Responda SOMENTE com um JSON válido no formato:
     }
     if (!listaCenas.length) return res.status(500).json({ erro: 'A IA não conseguiu montar a estratégia de cenas.' });
 
+    // Gera 1 imagem, com até 2 tentativas extras se a primeira falhar do lado da OpenAI
+    // (com qualidade "low", falhas nas primeiras tentativas são mais comuns).
+    async function gerarUmaImagem(cena, imagensDessaGeracao, instrucaoExtra) {
+      for (let tentativa = 1; tentativa <= 3; tentativa++) {
+        try {
+          const rImg = await fetch('https://api.openai.com/v1/responses', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + chave },
+            body: JSON.stringify({
+              model: 'gpt-5.6-luna',
+              input: [{
+                role: 'user',
+                content: [
+                  { type: 'input_text', text: `REGRA MAIS IMPORTANTE: a cor do produto na imagem gerada precisa ser EXATAMENTE a mesma cor da(s) foto(s) real(is) anexada(s) — não troque a cor, não invente outra cor, não escolha uma cor "padrão". Preserve também forma, textura, material e proporções exatas do produto real. Usando essas fotos reais como referência, gere uma nova composição comercial: ${cena.instrucao}${instrucaoExtra}` },
+                  ...imagensDessaGeracao.map(img => ({ type: 'input_image', image_url: img }))
+                ]
+              }],
+              tools: [{ type: 'image_generation', size: TAMANHO_IMAGEM, quality: qualidadeFinal }]
+            })
+          });
+
+          if (!rImg.ok) {
+            const errTxt = await rImg.text();
+            if (tentativa < 3) continue;
+            return { tipo: cena.tipo, erro: errTxt.slice(0, 200) };
+          }
+
+          const dataImg = await rImg.json();
+          const chamadasImagem = (dataImg.output || []).filter(o => o.type === 'image_generation_call');
+          const chamadaOk = chamadasImagem.find(o => o.status === 'completed' && o.result);
+          const b64 = chamadaOk?.result;
+          if (b64) {
+            return { tipo: cena.tipo, imagem: `data:image/png;base64,${b64}`, erro: null };
+          }
+          if (tentativa < 3) continue; // tenta de novo em vez de desistir na primeira falha
+          const falhas = chamadasImagem.map(o => `status: ${o.status}${o.error ? ', erro: ' + JSON.stringify(o.error) : ''}`).join(' | ');
+          const mensagemFinal = (dataImg.output || []).find(o => o.type === 'message');
+          const textoMensagem = mensagemFinal?.content?.map(c => c.text).filter(Boolean).join(' ') || '';
+          return { tipo: cena.tipo, imagem: null, erro: `A geração de imagem falhou do lado da OpenAI (após ${tentativa} tentativas). ${falhas || 'Nenhuma chamada de imagem encontrada.'} ${textoMensagem ? 'Mensagem: ' + textoMensagem : ''}` };
+        } catch (e) {
+          if (tentativa < 3) continue;
+          return { tipo: cena.tipo, erro: e.message };
+        }
+      }
+    }
+
     const fotoprincipal = listaImagensEnviadas[0];
     const TAMANHO_GRUPO = 3; // gera em grupos de 3 ao mesmo tempo — bom equilíbrio entre velocidade e o limite de rate da conta
     const geracoes = [];
@@ -172,43 +218,7 @@ Responda SOMENTE com um JSON válido no formato:
         const instrucaoExtra = (ehCenaDeVariacao && listaImagensEnviadas.length > 1)
           ? ` Mostre as ${listaImagensEnviadas.length} variações de cor/versão do produto (uma foto de referência pra cada), lado a lado ou organizadas de forma comercial.`
           : '';
-        try {
-          const rImg = await fetch('https://api.openai.com/v1/responses', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + chave },
-            body: JSON.stringify({
-              model: 'gpt-5.6-luna',
-              input: [{
-                role: 'user',
-                content: [
-                  { type: 'input_text', text: `Usando a(s) foto(s) real(is) do produto anexada(s) como referência de fidelidade total (não altere forma, cor, textura, material, proporções ou nenhum detalhe visual do produto — vale pra qualquer tipo de produto, não só roupa), gere uma nova composição comercial: ${cena.instrucao}${instrucaoExtra}` },
-                  ...imagensDessaGeracao.map(img => ({ type: 'input_image', image_url: img }))
-                ]
-              }],
-              tools: [{ type: 'image_generation', size: TAMANHO_IMAGEM, quality: qualidadeFinal }]
-            })
-          });
-
-          if (!rImg.ok) {
-            const errTxt = await rImg.text();
-            return { tipo: cena.tipo, erro: errTxt.slice(0, 200) };
-          }
-
-          const dataImg = await rImg.json();
-          const chamadasImagem = (dataImg.output || []).filter(o => o.type === 'image_generation_call');
-          const chamadaOk = chamadasImagem.find(o => o.status === 'completed' && o.result);
-          const b64 = chamadaOk?.result;
-          if (b64) {
-            return { tipo: cena.tipo, imagem: `data:image/png;base64,${b64}`, erro: null };
-          }
-          // Nenhuma chamada de imagem deu certo — monta um erro útil, sem o "ruído" do reasoning
-          const falhas = chamadasImagem.map(o => `status: ${o.status}${o.error ? ', erro: ' + JSON.stringify(o.error) : ''}`).join(' | ');
-          const mensagemFinal = (dataImg.output || []).find(o => o.type === 'message');
-          const textoMensagem = mensagemFinal?.content?.map(c => c.text).filter(Boolean).join(' ') || '';
-          return { tipo: cena.tipo, imagem: null, erro: `A geração de imagem falhou do lado da OpenAI. ${falhas || 'Nenhuma chamada de imagem encontrada.'} ${textoMensagem ? 'Mensagem: ' + textoMensagem : ''}` };
-        } catch (e) {
-          return { tipo: cena.tipo, erro: e.message };
-        }
+        return gerarUmaImagem(cena, imagensDessaGeracao, instrucaoExtra);
       }));
       geracoes.push(...resultadosGrupo);
     }
