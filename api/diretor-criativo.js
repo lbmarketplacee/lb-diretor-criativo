@@ -1,12 +1,14 @@
 // Diretor Criativo LB — gera o funil de fotos comerciais (até 8 imagens) + título + descrição.
-// Usa a Responses API da OpenAI (manda a FOTO REAL junto com a instrução de cada cena), pra manter
-// fidelidade de verdade ao produto — diferente de gerar do zero só com texto.
-// Gera as fotos UMA DE CADA VEZ (sequencial), não em paralelo, pra respeitar o limite de rate da conta.
-// Variável de ambiente necessária na Vercel: OPENAI_API_KEY
+// Usa a API do Google Gemini (Nano Banana Pro, pra imagem, e Gemini Flash, pra texto).
+// Manda a FOTO REAL junto com a instrução de cada cena, pra manter fidelidade de verdade ao produto.
+// Gera as fotos em grupos de 3 em paralelo.
+// Variável de ambiente necessária na Vercel: GEMINI_API_KEY
 
 const NOMES_MK = { shopee: 'Shopee', ml: 'Mercado Livre', tiktok: 'TikTok Shop' };
-const TAMANHO_IMAGEM = '1024x1280'; // vertical 4:5 (proporção exata: 1024÷1280 = 0.8 = 4:5), divisível por 16
-const QUALIDADE_IMAGEM = 'medium';
+const ASPECT_RATIO = '4:5';
+const TAMANHO_IMAGEM_GEMINI = '2K';
+const MODELO_TEXTO = 'gemini-2.5-flash';
+const MODELO_IMAGEM = 'gemini-3-pro-image'; // Nano Banana Pro — aceita até 14 fotos de referência
 
 // Mesma regra exata usada no "Gerar Anúncio com IA" — mantém os 2 lugares sempre consistentes
 const REGRAS_TITULO = {
@@ -42,6 +44,13 @@ const SEQUENCIA_PADRAO = [
   { ordem: 8, tipo: 'Principais Atributos com Callouts', foco: 'O produto real com setas/linhas de chamada (callouts) apontando pra 3-4 características visuais reais dele, com textos curtos ao lado de cada seta — baseado SOMENTE em características visíveis na foto ou mencionadas na descrição, sem inventar nenhum atributo.' }
 ];
 
+// Extrai { mimeType, data(base64 puro) } de uma data URL "data:image/jpeg;base64,XXXX"
+function parseDataUrl(dataUrl) {
+  const match = /^data:(.+?);base64,(.+)$/.exec(dataUrl || '');
+  if (!match) return null;
+  return { mimeType: match[1], data: match[2] };
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -49,15 +58,17 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ erro: 'Método não permitido' });
 
-  const chave = process.env.OPENAI_API_KEY;
-  if (!chave) return res.status(500).json({ erro: 'Chave da OpenAI não configurada.' });
+  const chave = process.env.GEMINI_API_KEY;
+  if (!chave) return res.status(500).json({ erro: 'Chave do Gemini não configurada.' });
 
   try {
     const { produto, marketplace, imagens, quantidadeFotos } = req.body || {};
-    const qualidadeFinal = 'low'; // só existe essa opção agora, mais barato
     const listaImagensEnviadas = Array.isArray(imagens) ? imagens.slice(0, 5) : [];
     if (!listaImagensEnviadas.length) return res.status(400).json({ erro: 'Envie pelo menos 1 foto real do produto.' });
     if (!produto || !produto.trim()) return res.status(400).json({ erro: 'Descreva o produto.' });
+
+    const listaImagensParsed = listaImagensEnviadas.map(parseDataUrl).filter(Boolean);
+    if (!listaImagensParsed.length) return res.status(400).json({ erro: 'Não consegui ler as fotos enviadas.' });
 
     const mk = NOMES_MK[marketplace] ? marketplace : 'ml';
     const nomeMk = NOMES_MK[mk];
@@ -66,7 +77,7 @@ export default async function handler(req, res) {
 
     const analisePrompt = `Você é um Diretor Criativo de e-commerce especializado em ${nomeMk}. Sua prioridade MÁXIMA é: fidelidade ao produto real > estética. Isso vale pra QUALQUER tipo de produto (roupa, eletrônico, acessório, utensílio, brinquedo, o que for) — não é específico de roupa. As fotos enviadas são a REFERÊNCIA REAL do produto — cada cena gerada depois vai usar essas fotos como base, preservando forma, cor, proporção, material, textura, acabamento e todos os detalhes visuais exatos. NUNCA planeje uma cena que exija inventar característica não visível nas fotos.
 
-${listaImagensEnviadas.length > 1 ? `Foram enviadas ${listaImagensEnviadas.length} fotos — a PRIMEIRA é a cor/versão principal do produto (será usada na maioria das cenas, pra manter consistência visual). As demais fotos são variações de cor/versão do MESMO produto, que só aparecem juntas na cena "Variações / versatilidade".` : 'Foi enviada 1 foto do produto — a referência principal de todas as cenas.'}
+${listaImagensParsed.length > 1 ? `Foram enviadas ${listaImagensParsed.length} fotos — a PRIMEIRA é a cor/versão principal do produto (será usada na maioria das cenas, pra manter consistência visual). As demais fotos são variações de cor/versão do MESMO produto, que só aparecem juntas na cena "Looks / Formas de Usar".` : 'Foi enviada 1 foto do produto — a referência principal de todas as cenas.'}
 
 Descrição do produto: "${produto}"
 
@@ -87,20 +98,18 @@ REGRAS DA DESCRIÇÃO:
 Responda SOMENTE com um JSON válido no formato:
 {"titulo":"...","descricao":"...","cenas":[{"tipo":"...","instrucao":"..."}]}`;
 
-    const rAnalise = await fetch('https://api.openai.com/v1/chat/completions', {
+    const rAnalise = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODELO_TEXTO}:generateContent`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + chave },
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': chave },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: 'Você é um Diretor Criativo de e-commerce. Responda somente com JSON válido.' },
-          { role: 'user', content: [
-            { type: 'text', text: analisePrompt },
-            ...listaImagensEnviadas.map(img => ({ type: 'image_url', image_url: { url: img } }))
-          ]}
-        ],
-        temperature: 0.6,
-        response_format: { type: 'json_object' }
+        contents: [{
+          role: 'user',
+          parts: [
+            { text: analisePrompt },
+            ...listaImagensParsed.map(img => ({ inline_data: { mime_type: img.mimeType, data: img.data } }))
+          ]
+        }],
+        generationConfig: { temperature: 0.6, responseMimeType: 'application/json' }
       })
     });
 
@@ -110,7 +119,7 @@ Responda SOMENTE com um JSON válido no formato:
     }
 
     const dataAnalise = await rAnalise.json();
-    const conteudo = dataAnalise.choices?.[0]?.message?.content || '{}';
+    const conteudo = dataAnalise.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
     let estrategia;
     try { estrategia = JSON.parse(conteudo); } catch { return res.status(500).json({ erro: 'Resposta inválida da IA na análise.' }); }
 
@@ -126,22 +135,17 @@ Responda SOMENTE com um JSON válido no formato:
         ? `O título abaixo tem exatamente ${titulo.length} caracteres, mas PRECISA ter no mínimo ${minTitulo} e no máximo ${maxTitulo} caracteres — faltam pelo menos ${faltam} caracteres. Reescreva-o mais longo, adicionando MAIS palavras-chave relevantes de busca, mantendo a mesma capitalização e estilo. Título atual: "${titulo}". Responda SOMENTE com um JSON no formato {"titulo":"..."}`
         : `O título abaixo tem ${titulo.length} caracteres, mas PRECISA ter no máximo ${maxTitulo} caracteres. Reescreva-o mais curto, removendo o que for menos relevante. Título atual: "${titulo}". Responda SOMENTE com um JSON no formato {"titulo":"..."}`;
       try {
-        const r2 = await fetch('https://api.openai.com/v1/chat/completions', {
+        const r2 = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODELO_TEXTO}:generateContent`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + chave },
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': chave },
           body: JSON.stringify({
-            model: 'gpt-4o-mini',
-            messages: [
-              { role: 'system', content: `Você é um especialista em títulos de anúncios para ${nomeMk}. Responda somente com JSON válido.` },
-              { role: 'user', content: pedidoCorrecao }
-            ],
-            temperature: 0.6,
-            response_format: { type: 'json_object' }
+            contents: [{ role: 'user', parts: [{ text: `Você é um especialista em títulos de anúncios para ${nomeMk}. Responda somente com JSON válido.\n\n${pedidoCorrecao}` }] }],
+            generationConfig: { temperature: 0.6, responseMimeType: 'application/json' }
           })
         });
         if (r2.ok) {
           const data2 = await r2.json();
-          const conteudo2 = data2.choices?.[0]?.message?.content || '{}';
+          const conteudo2 = data2.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
           const parsed2 = JSON.parse(conteudo2);
           if (parsed2.titulo) titulo = parsed2.titulo;
         } else { break; }
@@ -154,29 +158,30 @@ Responda SOMENTE com um JSON válido no formato:
     const cenaGuiaTamanhos = SEQUENCIA_PADRAO.find(s => s.obrigatoria);
     const jaTemGuia = listaCenas.some(c => /guia de tamanho|medidas/i.test(c.tipo || ''));
     if (cenaGuiaTamanhos && !jaTemGuia) {
-      if (listaCenas.length >= qtdFotos && listaCenas.length > 1) listaCenas = listaCenas.slice(0, -1); // abre espaço, sem passar do limite pedido
+      if (listaCenas.length >= qtdFotos && listaCenas.length > 1) listaCenas = listaCenas.slice(0, -1);
       listaCenas.push({ tipo: cenaGuiaTamanhos.tipo, instrucao: cenaGuiaTamanhos.foco });
     }
     if (!listaCenas.length) return res.status(500).json({ erro: 'A IA não conseguiu montar a estratégia de cenas.' });
 
-    // Gera 1 imagem, com até 2 tentativas extras se a primeira falhar do lado da OpenAI
-    // (com qualidade "low", falhas nas primeiras tentativas são mais comuns).
+    // Gera 1 imagem, com até 2 tentativas extras se a primeira falhar
     async function gerarUmaImagem(cena, imagensDessaGeracao, instrucaoExtra) {
       for (let tentativa = 1; tentativa <= 3; tentativa++) {
         try {
-          const rImg = await fetch('https://api.openai.com/v1/responses', {
+          const rImg = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODELO_IMAGEM}:generateContent`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + chave },
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': chave },
             body: JSON.stringify({
-              model: 'gpt-5.6-luna',
-              input: [{
+              contents: [{
                 role: 'user',
-                content: [
-                  { type: 'input_text', text: `Usando a(s) foto(s) real(is) do produto anexada(s) como referência de fidelidade total (não altere forma, cor, textura, material, proporções ou nenhum detalhe visual do produto — vale pra qualquer tipo de produto, não só roupa), gere uma nova composição comercial: ${cena.instrucao}${instrucaoExtra}` },
-                  ...imagensDessaGeracao.map(img => ({ type: 'input_image', image_url: img }))
+                parts: [
+                  { text: `Usando a(s) foto(s) real(is) do produto anexada(s) como referência de fidelidade total (não altere forma, cor, textura, material, proporções ou nenhum detalhe visual do produto — vale pra qualquer tipo de produto, não só roupa), gere uma nova composição comercial: ${cena.instrucao}${instrucaoExtra}` },
+                  ...imagensDessaGeracao.map(img => ({ inline_data: { mime_type: img.mimeType, data: img.data } }))
                 ]
               }],
-              tools: [{ type: 'image_generation', size: TAMANHO_IMAGEM, quality: qualidadeFinal }]
+              generationConfig: {
+                responseModalities: ['TEXT', 'IMAGE'],
+                imageConfig: { aspectRatio: ASPECT_RATIO, imageSize: TAMANHO_IMAGEM_GEMINI }
+              }
             })
           });
 
@@ -187,17 +192,15 @@ Responda SOMENTE com um JSON válido no formato:
           }
 
           const dataImg = await rImg.json();
-          const chamadasImagem = (dataImg.output || []).filter(o => o.type === 'image_generation_call');
-          const chamadaOk = chamadasImagem.find(o => o.status === 'completed' && o.result);
-          const b64 = chamadaOk?.result;
+          const partes = dataImg.candidates?.[0]?.content?.parts || [];
+          const partImagem = partes.find(p => p.inlineData?.data || p.inline_data?.data);
+          const b64 = partImagem?.inlineData?.data || partImagem?.inline_data?.data;
           if (b64) {
             return { tipo: cena.tipo, imagem: `data:image/png;base64,${b64}`, erro: null };
           }
-          if (tentativa < 3) continue; // tenta de novo em vez de desistir na primeira falha
-          const falhas = chamadasImagem.map(o => `status: ${o.status}${o.error ? ', erro: ' + JSON.stringify(o.error) : ''}`).join(' | ');
-          const mensagemFinal = (dataImg.output || []).find(o => o.type === 'message');
-          const textoMensagem = mensagemFinal?.content?.map(c => c.text).filter(Boolean).join(' ') || '';
-          return { tipo: cena.tipo, imagem: null, erro: `A geração de imagem falhou do lado da OpenAI (após ${tentativa} tentativas). ${falhas || 'Nenhuma chamada de imagem encontrada.'} ${textoMensagem ? 'Mensagem: ' + textoMensagem : ''}` };
+          if (tentativa < 3) continue;
+          const textoResposta = partes.map(p => p.text).filter(Boolean).join(' ');
+          return { tipo: cena.tipo, imagem: null, erro: `A geração de imagem falhou (após ${tentativa} tentativas). ${textoResposta ? 'Mensagem: ' + textoResposta : 'Nenhuma imagem retornada.'}` };
         } catch (e) {
           if (tentativa < 3) continue;
           return { tipo: cena.tipo, erro: e.message };
@@ -205,18 +208,17 @@ Responda SOMENTE com um JSON válido no formato:
       }
     }
 
-    const fotoprincipal = listaImagensEnviadas[0];
-    const TAMANHO_GRUPO = 3; // gera em grupos de 3 ao mesmo tempo — bom equilíbrio entre velocidade e o limite de rate da conta
+    const fotoprincipal = listaImagensParsed[0];
+    const TAMANHO_GRUPO = 3;
     const geracoes = [];
     for (let i = 0; i < listaCenas.length; i += TAMANHO_GRUPO) {
       const grupo = listaCenas.slice(i, i + TAMANHO_GRUPO);
       const resultadosGrupo = await Promise.all(grupo.map(async (cena) => {
-        // Só a cena de "Variações/versatilidade" usa TODAS as fotos (pra mostrar as cores diferentes).
-        // As demais cenas usam só a foto principal, pra manter a mesma cor/produto consistente em todo o funil.
+        // Só a cena de "Looks/Formas de Usar" usa TODAS as fotos (pra mostrar as cores diferentes).
         const ehCenaDeVariacao = /looks|formas de usar/i.test(cena.tipo || '');
-        const imagensDessaGeracao = (ehCenaDeVariacao && listaImagensEnviadas.length > 1) ? listaImagensEnviadas : [fotoprincipal];
-        const instrucaoExtra = (ehCenaDeVariacao && listaImagensEnviadas.length > 1)
-          ? ` Mostre as ${listaImagensEnviadas.length} cores/versões do produto, cada uma reproduzindo EXATAMENTE a cor da foto de referência correspondente — não misture as cores, não deixe todas iguais. IMPORTANTE: cada peça precisa aparecer GRANDE e bem visível na composição (não miniaturizada, não amontoada) — se forem muitas cores, distribua num grid espaçoso, mas cada uma tem que ficar nítida e reconhecível, do tamanho suficiente pra mostrar detalhe e cor com clareza.`
+        const imagensDessaGeracao = (ehCenaDeVariacao && listaImagensParsed.length > 1) ? listaImagensParsed : [fotoprincipal];
+        const instrucaoExtra = (ehCenaDeVariacao && listaImagensParsed.length > 1)
+          ? ` Mostre as ${listaImagensParsed.length} cores/versões do produto, cada uma reproduzindo EXATAMENTE a cor da foto de referência correspondente — não misture as cores, não deixe todas iguais. IMPORTANTE: cada peça precisa aparecer GRANDE e bem visível na composição (não miniaturizada, não amontoada) — se forem muitas cores, distribua num grid espaçoso, mas cada uma tem que ficar nítida e reconhecível, do tamanho suficiente pra mostrar detalhe e cor com clareza.`
           : '';
         return gerarUmaImagem(cena, imagensDessaGeracao, instrucaoExtra);
       }));
