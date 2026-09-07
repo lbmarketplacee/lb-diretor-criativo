@@ -7,7 +7,7 @@
 const NOMES_MK = { shopee: 'Shopee', ml: 'Mercado Livre', tiktok: 'TikTok Shop' };
 const ASPECT_RATIO = '4:5';
 const TAMANHO_IMAGEM_GEMINI = '2K';
-const MODELO_TEXTO = 'gemini-2.5-flash';
+const MODELO_TEXTO = 'gemini-3.6-flash';
 const MODELO_IMAGEM = 'gemini-3-pro-image'; // Nano Banana Pro — aceita até 14 fotos de referência
 
 // Mesma regra exata usada no "Gerar Anúncio com IA" — mantém os 2 lugares sempre consistentes
