@@ -8,7 +8,8 @@ const NOMES_MK = { shopee: 'Shopee', ml: 'Mercado Livre', tiktok: 'TikTok Shop' 
 const ASPECT_RATIO = '4:5';
 const TAMANHO_IMAGEM_GEMINI = '2K';
 const MODELO_TEXTO = 'gemini-3.6-flash';
-const MODELO_IMAGEM = 'gemini-3-pro-image'; // Nano Banana Pro — aceita até 14 fotos de referência
+const MODELO_IMAGEM_PRO = 'gemini-3-pro-image'; // Nano Banana Pro — mais caro, mais fiel, só pra Capa
+const MODELO_IMAGEM_BARATO = 'gemini-3.1-flash-image'; // Nano Banana 2 — ~metade do preço, pro resto do funil
 
 // Mesma regra exata usada no "Gerar Anúncio com IA" — mantém os 2 lugares sempre consistentes
 const REGRAS_TITULO = {
@@ -165,9 +166,11 @@ Responda SOMENTE com um JSON válido no formato:
 
     // Gera 1 imagem, com até 2 tentativas extras se a primeira falhar
     async function gerarUmaImagem(cena, imagensDessaGeracao, instrucaoExtra) {
+      const ehCapa = /capa ambientada/i.test(cena.tipo || '');
+      const modeloEscolhido = ehCapa ? MODELO_IMAGEM_PRO : MODELO_IMAGEM_BARATO;
       for (let tentativa = 1; tentativa <= 3; tentativa++) {
         try {
-          const rImg = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODELO_IMAGEM}:generateContent`, {
+          const rImg = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modeloEscolhido}:generateContent`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-goog-api-key': chave },
             body: JSON.stringify({
