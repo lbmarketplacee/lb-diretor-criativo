@@ -52,6 +52,43 @@ function parseDataUrl(dataUrl) {
   return { mimeType: match[1], data: match[2] };
 }
 
+// Gera 1 imagem avulsa (sem produto/foto de referência obrigatórios) — usada pelo Logotipo e pelo Guia de Tamanhos avulso
+async function gerarImagemAvulsa(chave, prompt, modelo, aspectRatio, tamanho, imagensRef) {
+  for (let tentativa = 1; tentativa <= 3; tentativa++) {
+    try {
+      const parts = [{ text: prompt }];
+      (imagensRef || []).forEach(img => parts.push({ inline_data: { mime_type: img.mimeType, data: img.data } }));
+      const rImg = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': chave },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts }],
+          generationConfig: {
+            responseModalities: ['TEXT', 'IMAGE'],
+            imageConfig: { aspectRatio, imageSize: tamanho }
+          }
+        })
+      });
+      if (!rImg.ok) {
+        const errTxt = await rImg.text();
+        if (tentativa < 3) continue;
+        return { ok: false, erro: errTxt.slice(0, 200) };
+      }
+      const dataImg = await rImg.json();
+      const partes = dataImg.candidates?.[0]?.content?.parts || [];
+      const partImagem = partes.find(p => p.inlineData?.data || p.inline_data?.data);
+      const b64 = partImagem?.inlineData?.data || partImagem?.inline_data?.data;
+      if (b64) return { ok: true, imagem: `data:image/png;base64,${b64}` };
+      if (tentativa < 3) continue;
+      const textoResposta = partes.map(p => p.text).filter(Boolean).join(' ');
+      return { ok: false, erro: `A geração de imagem falhou. ${textoResposta ? 'Mensagem: ' + textoResposta : 'Nenhuma imagem retornada.'}` };
+    } catch (e) {
+      if (tentativa < 3) continue;
+      return { ok: false, erro: e.message };
+    }
+  }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -61,6 +98,40 @@ export default async function handler(req, res) {
 
   const chave = process.env.GEMINI_API_KEY;
   if (!chave) return res.status(500).json({ erro: 'Chave do Gemini não configurada.' });
+
+  const { acao } = req.body || {};
+
+  // ===== AÇÃO: Gerar Logotipo (leve, não precisa de foto do produto) =====
+  if (acao === 'logo') {
+    try {
+      const { nomeLoja, estilo } = req.body || {};
+      if (!nomeLoja || !nomeLoja.trim()) return res.status(400).json({ erro: 'Informe o nome da loja.' });
+      const prompt = `Crie um logotipo comercial profissional para uma loja chamada "${nomeLoja.trim()}"${estilo && estilo.trim() ? `, no estilo: ${estilo.trim()}` : ', estilo moderno e comercial, adequado para marketplace de e-commerce'}. O logotipo deve ter o nome da loja de forma legível e elegante, fundo limpo (branco ou transparente), composição centralizada, adequado para usar como foto de perfil de loja online. Não inclua texto adicional além do nome da loja.`;
+      const resultado = await gerarImagemAvulsa(chave, prompt, 'gemini-3.1-flash-image', '1:1', '1K', []);
+      if (!resultado.ok) return res.status(500).json({ erro: resultado.erro });
+      return res.status(200).json({ ok: true, imagem: resultado.imagem });
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ erro: 'Erro interno: ' + (e.message || 'desconhecido') });
+    }
+  }
+
+  // ===== AÇÃO: Guia de Tamanhos avulso (leve, sem rodar o funil completo) =====
+  if (acao === 'guia_tamanhos') {
+    try {
+      const { produto, marketplace, imagens } = req.body || {};
+      if (!produto || !produto.trim()) return res.status(400).json({ erro: 'Descreva o produto.' });
+      const mk = NOMES_MK[marketplace] ? marketplace : 'ml';
+      const listaImagensParsed = (Array.isArray(imagens) ? imagens.slice(0, 1) : []).map(parseDataUrl).filter(Boolean);
+      const prompt = `Crie um GUIA DE TAMANHOS genérico, no estilo padrão de tabela de medidas usada em anúncios de marketplace (${NOMES_MK[mk]}), para este produto: "${produto.trim()}". Monte uma tabela com tamanhos P, M, G, GG (ou o padrão adequado ao tipo de produto) e as medidas típicas de cada um em cm. Use valores realistas e coerentes com o tipo de produto — não precisa ser a medida exata de nenhuma peça específica, é um guia de referência padrão. Fundo limpo, layout comercial organizado, fácil de ler.`;
+      const resultado = await gerarImagemAvulsa(chave, prompt, 'gemini-3.1-flash-image', '4:5', '2K', listaImagensParsed);
+      if (!resultado.ok) return res.status(500).json({ erro: resultado.erro });
+      return res.status(200).json({ ok: true, imagem: resultado.imagem });
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ erro: 'Erro interno: ' + (e.message || 'desconhecido') });
+    }
+  }
 
   try {
     const { produto, marketplace, imagens, quantidadeFotos } = req.body || {};
