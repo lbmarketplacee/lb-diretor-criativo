@@ -134,7 +134,7 @@ export default async function handler(req, res) {
 
     const mk = NOMES_MK[marketplace] ? marketplace : 'ml';
     const nomeMk = NOMES_MK[mk];
-    const qtdFotos = Math.min(Math.max(Number(quantidadeFotos) || 8, 1), 8);
+    const qtdFotos = Math.min(Math.max(Number(quantidadeFotos) || 5, 1), 8);
     const regraTitulo = REGRAS_TITULO[mk];
 
     const analisePrompt = `Você é um Diretor Criativo de e-commerce especializado em ${nomeMk}. Sua prioridade MÁXIMA é: fidelidade ao produto real > estética. Isso vale pra QUALQUER tipo de produto (roupa, eletrônico, acessório, utensílio, brinquedo, o que for) — não é específico de roupa. As fotos enviadas são a REFERÊNCIA REAL do produto — cada cena gerada depois vai usar essas fotos como base, preservando forma, cor, proporção, material, textura, acabamento e todos os detalhes visuais exatos. NUNCA planeje uma cena que exija inventar característica não visível nas fotos.
@@ -227,8 +227,7 @@ Responda SOMENTE com um JSON válido no formato:
 
     // Gera 1 imagem, com até 2 tentativas extras se a primeira falhar
     async function gerarUmaImagem(cena, imagensDessaGeracao, instrucaoExtra) {
-      const ehCapa = /capa ambientada/i.test(cena.tipo || '');
-      const modeloEscolhido = ehCapa ? MODELO_IMAGEM_PRO : MODELO_IMAGEM_BARATO;
+      const modeloEscolhido = MODELO_IMAGEM_BARATO; // sempre o barato agora, custo reduzido
       for (let tentativa = 1; tentativa <= 3; tentativa++) {
         try {
           const rImg = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modeloEscolhido}:generateContent`, {
